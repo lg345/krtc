@@ -117,7 +117,8 @@ class KerberosTicket:
         service_principal = self.service.replace("@", "/")
         
         self._context, self.auth_header = kerberos.authGSSClientInit(service_principal)
-        kerberos.authGSSClientStep(self._context)
+        # authGSSClientStep with empty challenge generates initial token
+        kerberos.authGSSClientStep(self._context, "")
     
     def verify_response(self, auth_header):
         """
