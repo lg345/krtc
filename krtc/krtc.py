@@ -116,8 +116,8 @@ class KerberosTicket:
         # pykerberos uses a different format: "HTTP/hostname"
         service_principal = self.service.replace("@", "/")
         
-        __, self.auth_header = kerberos.authGSSClientInit(service_principal)
-        kerberos.authGSSClientStep(self.__dict__, service_principal)
+        self._context, self.auth_header = kerberos.authGSSClientInit(service_principal)
+        kerberos.authGSSClientStep(self._context)
     
     def verify_response(self, auth_header):
         """
@@ -175,7 +175,12 @@ class KerberosTicket:
         else:
             raise ValueError("Negotiate not found in %s" % auth_header)
         
-        kerberos.authGSSClientStep(self.__dict__, auth_details)
+        if self._context is None:
+            raise RuntimeError("Ticket already used for verification")
+        
+        kerberos.authGSSClientStep(self._context, auth_details)
+        kerberos.authGSSClientClean(self._context)
+        self._context = None
     
     def getAuthHeaders(self):
         """
