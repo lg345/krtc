@@ -60,7 +60,8 @@ class KerberosTicket:
             kerberos.GSSError: If pykerberos Kerberos initialization fails.
         """
         self.service = service
-        self._context = None
+        self._krb_context = None
+        self._gss_context = None
         self._setup_context()
     
     def _setup_context(self):
@@ -94,13 +95,13 @@ class KerberosTicket:
         """
         target_name = Name(self.service, NameType.hostbased_service)
         
-        self._context = gssapi.SecurityContext(
+        self._gss_context = gssapi.SecurityContext(
             name=target_name,
             usage='initiate'
         )
         
         # Get initial token
-        token = self._context.step()
+        token = self._gss_context.step()
         self.auth_header = "Negotiate " + base64.b64encode(token).decode('ascii')
     
     def _setup_context_pykerberos(self):
@@ -113,12 +114,14 @@ class KerberosTicket:
         Raises:
             kerberos.GSSError: If authentication fails.
         """
-        # pykerberos uses a different format: "HTTP/hostname"
-        service_principal = self.service.replace("@", "/")
-        
-        self._context, self.auth_header = kerberos.authGSSClientInit(service_principal)
-        # authGSSClientStep with empty challenge generates initial token
-        kerberos.authGSSClientStep(self._context, "")
+        # pykerberos authGSSClientInit returns (result_code, context)
+        __, krb_context = kerberos.authGSSClientInit(self.service)
+        kerberos.authGSSClientStep(krb_context, "")
+        self._krb_context = krb_context
+        # authGSSClientResponse returns already base64-encoded string
+        self.auth_header = (
+            "Negotiate " + kerberos.authGSSClientResponse(krb_context)
+        )
     
     def verify_response(self, auth_header):
         """
@@ -156,12 +159,12 @@ class KerberosTicket:
         else:
             raise ValueError("Negotiate not found in %s" % auth_header)
         
-        if self._context is None:
+        if self._gss_context is None:
             raise RuntimeError("Ticket already used for verification")
         
         token = base64.b64decode(auth_details)
-        self._context.step(token)
-        self._context = None
+        self._gss_context.step(token)
+        self._gss_context = None
     
     def _verify_response_pykerberos(self, auth_header):
         """
@@ -176,12 +179,13 @@ class KerberosTicket:
         else:
             raise ValueError("Negotiate not found in %s" % auth_header)
         
-        if self._context is None:
+        # Finish the Kerberos handshake
+        krb_context = self._krb_context
+        if krb_context is None:
             raise RuntimeError("Ticket already used for verification")
-        
-        kerberos.authGSSClientStep(self._context, auth_details)
-        kerberos.authGSSClientClean(self._context)
-        self._context = None
+        self._krb_context = None
+        kerberos.authGSSClientStep(krb_context, auth_details)
+        kerberos.authGSSClientClean(krb_context)
     
     def getAuthHeaders(self):
         """
