@@ -1,2 +1,2 @@
-pykerberos
+gssapi
 requests
