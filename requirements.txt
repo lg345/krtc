@@ -1,2 +1,5 @@
+# Kerberos authentication - use gssapi for cross-platform support (Windows, Linux, macOS)
+# For Linux-only environments, pykerberos is also supported for backwards compatibility
 gssapi
+# pykerberos  # Optional: uncomment for Linux-only environments without gssapi
 requests
